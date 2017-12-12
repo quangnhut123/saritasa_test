@@ -62,6 +62,7 @@ end
 execute "install-composer-package" do
   command "curl -sS https://getcomposer.org/installer | php && sudo mv composer.phar /usr/local/bin/composer"
   action :run
+  not_if { File.exists?("/usr/local/bin/composer") }
 end
 
 #Make web root
@@ -90,24 +91,28 @@ end
 
 #Install composer dependencies
 execute "install-composer-dependencies" do
-  command "cd /var/www/simplephpapp && /usr/local/bin/composer install -vvv"
+  command "/usr/local/bin/composer install -vvv"
+  cwd '/var/www/simplephpapp'
   action :run
 end
 
 #Configuration simplephpapp
 execute "configure-app" do
-  command "cd /var/www/simplephpapp && cp .env.example .env && php artisan key:generate && npm install --verbose"
+  command "cp .env.example .env && php artisan key:generate && npm install --verbose"
+  cwd '/var/www/simplephpapp'
   action :run
 end
 
 #Start simplephpapp
 execute "start-app" do
-  command "cd /var/www/simplephpapp && npm run production"
+  command "npm run production"
+  cwd '/var/www/simplephpapp'
   action :run
 end
 
 # create nginx server block file
-template "/etc/nginx/nginx.conf" do
+template "nginx-config" do
+  path "/etc/nginx/nginx.conf"
   source "default.conf.erb"
 end
 
@@ -115,25 +120,26 @@ end
 service "start-php-fpm" do
   service_name "php-fpm"
   supports :restart => true
-  action :restart
+  action [ :enable, :restart ] 
 end
 
 # Start nginx service
 service "start-nginx" do
   service_name "nginx"
   supports :restart => true
-  action :restart
+  action [ :enable, :restart ] 
 end
 
 #Correct permission for webroot folder
 execute 'correct-permission' do
-  command "sudo chown -R apache:apache /var/www"
+  command "sudo chown -R #{node['nginx']['user']}:#{node['nginx']['user']} /var/www"
   action :run
 end
 
 #Allow writing with selinux
 execute "selinux_allow" do
-  command "chcon -R -t httpd_sys_rw_content_t /var/www/simplephpapp/storage"
+  command "chcon -R -t httpd_sys_rw_content_t storage"
+  cwd '/var/www/simplephpapp'
   action :run
 end
 
